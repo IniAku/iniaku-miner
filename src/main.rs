@@ -601,14 +601,39 @@ fn main() {
 	let gpu2_stats = Arc::new(Mutex::new(CpuStats::default()));
 	if gpu2_enabled {
 		let gpu2_dir = base.join("gpu2");
-		let (cfg, extra) = write_gpu2_config(&config, &gpu2_dir, &cpu_dir, &token).unwrap_or_else(|e| {
-			log(&format!("gpu: {}", e));
-			std::process::exit(1)
-		});
-		let mut args = vec!["-c".to_string(), cfg.display().to_string()];
-		args.extend(extra);
-		engines.push(Engine::new("GPU2", gpu2_dir, cpu_dir.join(format!("xmrig{}", EXE)), args));
 		let fb = config.gpu.fallback.as_ref().unwrap();
+		let algo = fb.get("algo").and_then(Value::as_str).unwrap_or("kawpow");
+		if algo == "quantus" || algo == "qpow" {
+			// Quantus (QTC): our quantus-iniaku engine (official Quantus engines + LuckyPool stratum)
+			let _ = fs::create_dir_all(&gpu2_dir);
+			let url = fb["url"].as_str().unwrap_or("").trim_start_matches("stratum+tcp://").to_string();
+			let mut args = vec![
+				"-o".to_string(), url,
+				"-u".to_string(), fb["user"].as_str().unwrap_or("").to_string(),
+				"-p".to_string(), fb.get("pass").and_then(Value::as_str).unwrap_or("x").to_string(),
+				format!("--gpu-devices={}", config.gpu.devices.len().max(1)),
+				format!("--api-port={}", GPU2_API_PORT),
+				format!("--api-token={}", token),
+				"--paused".to_string(),
+			];
+			let cuda = match config.gpu.fallback_backend.as_str() {
+				"cuda" => true,
+				"opencl" => false,
+				_ => cpu_dir.join(CUDA_PLUGIN).exists() || config.gpu.driver == "cuda",
+			};
+			if cuda {
+				args.push("--cuda-gpu".to_string());
+			}
+			engines.push(Engine::new("GPU2", gpu2_dir, gpu_dir.join(format!("quantus-iniaku{}", EXE)), args));
+		} else {
+			let (cfg, extra) = write_gpu2_config(&config, &gpu2_dir, &cpu_dir, &token).unwrap_or_else(|e| {
+				log(&format!("gpu: {}", e));
+				std::process::exit(1)
+			});
+			let mut args = vec!["-c".to_string(), cfg.display().to_string()];
+			args.extend(extra);
+			engines.push(Engine::new("GPU2", gpu2_dir, cpu_dir.join(format!("xmrig{}", EXE)), args));
+		}
 		log(&format!("GPU2: {} on {} between ProgPoW turns (2% fee on that time)",
 			fb.get("algo").and_then(Value::as_str).unwrap_or("kawpow"), fb["url"].as_str().unwrap_or("?")));
 	}
