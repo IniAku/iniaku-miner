@@ -86,6 +86,10 @@ struct GpuConfig {
 	/// {"url": "rvn.pool:443", "user": "<RVN address>.<worker>", "algo": "kawpow", "tls": true}
 	#[serde(default)]
 	fallback: Option<Value>,
+	/// OpenCL platform for the fallback: index (0 = first) or vendor name ("NVIDIA", "AMD", "Intel").
+	/// XMRig's own "AUTO" only finds AMD.
+	#[serde(default = "default_platform")]
+	opencl_platform: Value,
 }
 
 impl Default for CpuConfig {
@@ -96,7 +100,7 @@ impl Default for CpuConfig {
 
 impl Default for GpuConfig {
 	fn default() -> Self {
-		GpuConfig { enabled: true, devices: default_devices(), driver: default_driver(), fallback: None }
+		GpuConfig { enabled: true, devices: default_devices(), driver: default_driver(), fallback: None, opencl_platform: default_platform() }
 	}
 }
 
@@ -114,6 +118,9 @@ fn default_pass() -> String {
 }
 fn default_devices() -> Vec<u32> {
 	vec![0]
+}
+fn default_platform() -> Value {
+	json!(0)
 }
 fn default_driver() -> String {
 	"opencl".into()
@@ -192,7 +199,7 @@ fn write_gpu2_config(config: &Config, dir: &Path, token: &str) -> Result<PathBuf
 		"colors": false,
 		"print-time": 60,
 		"cpu": { "enabled": false },
-		"opencl": { "enabled": true, "cache": true, "loader": null, "platform": "AUTO", "adl": true, "devices": indexes },
+		"opencl": { "enabled": true, "cache": true, "loader": null, "platform": config.gpu.opencl_platform, "adl": true, "devices": indexes },
 		"cuda": { "enabled": false },
 		"http": { "enabled": true, "host": "127.0.0.1", "port": GPU2_API_PORT, "access-token": token, "restricted": false },
 		"pools": [fallback],
