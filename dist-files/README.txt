@@ -33,6 +33,9 @@ iniaku-miner.json
              "fallback": a pool for the GPU between Epic ProgPoW turns, mined by XMRig, e.g.
                {"url": "gulf.moneroocean.stream:20128", "user": "<XMR address>", "algo": "kawpow", "tls": true}
              "fallback-backend": "auto" (CUDA on NVIDIA when cpu/xmrig-cuda is present), "cuda", "opencl"
+             Quantus (QTC) instead of KawPow: "algo": "quantus", e.g.
+               {"url": "sg.lproute.com:5660", "user": "<QTC address>.<worker>", "algo": "quantus"}
+               (LuckyPool, Singapore; runs gpu/quantus-iniaku, no DAG, little GPU memory)
              "opencl-platform": OpenCL platform for an OpenCL fallback (0 = first, or "AMD")
 
 Fallback pools and fee

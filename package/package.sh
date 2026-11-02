@@ -33,18 +33,28 @@ if [ "$os" = windows ]; then
 	fetch "$(gh "$XMRIG_REPO" "$XMRIG_VERSION" "xmrig-iniaku-$XMRIG_VERSION-windows-x64.zip")" xmrig.zip
 	fetch "$(gh "$EPIC_MINER_REPO" "$EPIC_MINER_VERSION" "epic-miner-iniaku-$EPIC_MINER_VERSION-windows-x64-opencl.zip")" epic.zip
 	fetch "$XMRIG_CUDA_WIN_URL" cuda.zip
+	fetch "$(gh "$QUANTUS_REPO" "$QUANTUS_VERSION" "quantus-iniaku-$QUANTUS_VERSION-windows-x64.zip")" quantus.zip
 	unpack "$work/dl/xmrig.zip" "$pkg/cpu"
 	unpack "$work/dl/epic.zip" "$pkg/gpu"
 	unpack "$work/dl/cuda.zip" "$pkg/cpu"
+	mkdir -p "$work/q" && unpack "$work/dl/quantus.zip" "$work/q"
+	cp "$work/q/quantus-iniaku.exe" "$pkg/gpu/"
+	cp "$work/q/LICENSE" "$pkg/gpu/LICENSE-quantus-iniaku.txt"
+	cp "$pkg"/cpu/nvrtc*.dll "$pkg/gpu/"
 	install -m 755 "$launcher" "$pkg/iniaku-miner.exe"
 	sed 's/$/\r/' "$root/dist-files/start.cmd" > "$pkg/start.cmd" 2>/dev/null || cp "$root/dist-files/start.cmd" "$pkg/"
 else
 	fetch "$(gh "$XMRIG_REPO" "$XMRIG_VERSION" "xmrig-iniaku-$XMRIG_VERSION-linux-x64.tar.gz")" xmrig.tgz
 	fetch "$(gh "$EPIC_MINER_REPO" "$EPIC_MINER_VERSION" "epic-miner-iniaku-$EPIC_MINER_VERSION-linux-x64-opencl.tar.gz")" epic.tgz
 	fetch "$(gh "$XMRIG_CUDA_LINUX_REPO" "$XMRIG_CUDA_LINUX_VERSION" "xmrig-cuda-$XMRIG_CUDA_LINUX_VERSION-linux-x64-cuda12.tar.gz")" cuda.tgz
+	fetch "$(gh "$QUANTUS_REPO" "$QUANTUS_VERSION" "quantus-iniaku-$QUANTUS_VERSION-linux-x64.tar.gz")" quantus.tgz
 	unpack "$work/dl/xmrig.tgz" "$pkg/cpu"
 	unpack "$work/dl/epic.tgz" "$pkg/gpu"
 	unpack "$work/dl/cuda.tgz" "$pkg/cpu"
+	mkdir -p "$work/q" && unpack "$work/dl/quantus.tgz" "$work/q"
+	install -m 755 "$work/q/quantus-iniaku" "$pkg/gpu/"
+	cp "$work/q/LICENSE" "$pkg/gpu/LICENSE-quantus-iniaku.txt"
+	cp -P "$pkg"/cpu/libnvrtc* "$pkg/gpu/"
 	install -m 755 "$launcher" "$pkg/iniaku-miner"
 	install -m 755 "$root/dist-files/start.sh" "$pkg/start.sh"
 fi
@@ -59,7 +69,7 @@ rm -f "$pkg/cpu/SHA256SUMS.sig"
 cp "$root/dist-files/iniaku-miner.json" "$pkg/"
 cp "$root/dist-files/README.txt" "$pkg/"
 cp "$root/LICENSE" "$pkg/LICENSE.txt"
-printf 'iniaku-miner %s\nXMRig iniaku %s\nepic-miner iniaku %s\n' "$version" "$XMRIG_VERSION" "$EPIC_MINER_VERSION" > "$pkg/VERSIONS.txt"
+printf 'iniaku-miner %s\nXMRig iniaku %s\nepic-miner iniaku %s\nquantus-iniaku %s\n' "$version" "$XMRIG_VERSION" "$EPIC_MINER_VERSION" "$QUANTUS_VERSION" > "$pkg/VERSIONS.txt"
 
 if [ "$os" = windows ]; then
 	for f in "$pkg/README.txt" "$pkg/iniaku-miner.json" "$pkg/VERSIONS.txt"; do sed -i 's/\r\?$/\r/' "$f"; done

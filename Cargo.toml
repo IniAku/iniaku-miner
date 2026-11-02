@@ -1,6 +1,6 @@
 [package]
 name = "iniaku-miner"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 description = "One miner for epic.iniaku.my.id: RandomX on the CPU (XMRig iniaku) and ProgPoW on the GPU (epic-miner iniaku)"
 license = "GPL-3.0"
