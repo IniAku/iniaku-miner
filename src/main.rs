@@ -90,6 +90,10 @@ struct GpuConfig {
 	/// XMRig's own "AUTO" only finds AMD.
 	#[serde(default = "default_platform")]
 	opencl_platform: Value,
+	/// Backend of the GPU fallback: "auto" (CUDA when the xmrig-cuda plugin is next to xmrig,
+	/// needed for KawPow on NVIDIA), "cuda" or "opencl" (AMD).
+	#[serde(default = "default_backend")]
+	fallback_backend: String,
 }
 
 impl Default for CpuConfig {
@@ -100,7 +104,7 @@ impl Default for CpuConfig {
 
 impl Default for GpuConfig {
 	fn default() -> Self {
-		GpuConfig { enabled: true, devices: default_devices(), driver: default_driver(), fallback: None, opencl_platform: default_platform() }
+		GpuConfig { enabled: true, devices: default_devices(), driver: default_driver(), fallback: None, opencl_platform: default_platform(), fallback_backend: default_backend() }
 	}
 }
 
@@ -118,6 +122,9 @@ fn default_pass() -> String {
 }
 fn default_devices() -> Vec<u32> {
 	vec![0]
+}
+fn default_backend() -> String {
+	"auto".into()
 }
 fn default_platform() -> Value {
 	json!(0)
@@ -183,7 +190,14 @@ fn write_cpu_config(config: &Config, dir: &Path) -> Result<PathBuf, String> {
 }
 
 /// XMRig on the GPU (OpenCL) for the fallback pool; paused by iniaku-miner during the ProgPoW turn.
-fn write_gpu2_config(config: &Config, dir: &Path, token: &str) -> Result<PathBuf, String> {
+#[cfg(windows)]
+const CUDA_PLUGIN: &str = "xmrig-cuda.dll";
+#[cfg(not(windows))]
+const CUDA_PLUGIN: &str = "libxmrig-cuda.so";
+
+/// XMRig on the GPU for the fallback pool; paused by iniaku-miner during the ProgPoW turn.
+/// Returns the config path and the extra command line arguments (device selection).
+fn write_gpu2_config(config: &Config, dir: &Path, xmrig_dir: &Path, token: &str) -> Result<(PathBuf, Vec<String>), String> {
 	let mut fallback = config.gpu.fallback.clone().unwrap_or(Value::Null);
 	if !fallback.is_object() || fallback.get("url").is_none() || fallback.get("user").is_none() {
 		return Err("gpu.fallback needs at least \"url\" and \"user\"".into());
@@ -192,15 +206,25 @@ fn write_gpu2_config(config: &Config, dir: &Path, token: &str) -> Result<PathBuf
 		fallback["algo"] = json!("kawpow");
 	}
 
-	let indexes: Vec<Value> = config.gpu.devices.iter().map(|d| json!(d)).collect();
+	let plugin = xmrig_dir.join(CUDA_PLUGIN);
+	let cuda = match config.gpu.fallback_backend.as_str() {
+		"cuda" => true,
+		"opencl" => false,
+		_ => plugin.exists(),
+	};
+	if cuda && !plugin.exists() {
+		return Err(format!("gpu.fallback-backend \"cuda\" needs {}", plugin.display()));
+	}
+
+	let devices = config.gpu.devices.iter().map(|d| d.to_string()).collect::<Vec<_>>().join(",");
 	let xmrig = json!({
 		"autosave": false,
 		"donate-level": 0,
 		"colors": false,
 		"print-time": 60,
 		"cpu": { "enabled": false },
-		"opencl": { "enabled": true, "cache": true, "loader": null, "platform": config.gpu.opencl_platform, "adl": true, "devices": indexes },
-		"cuda": { "enabled": false },
+		"opencl": { "enabled": !cuda, "cache": true, "loader": null, "platform": config.gpu.opencl_platform, "adl": true },
+		"cuda": { "enabled": cuda, "loader": if cuda { json!(plugin.display().to_string()) } else { Value::Null }, "nvml": true },
 		"http": { "enabled": true, "host": "127.0.0.1", "port": GPU2_API_PORT, "access-token": token, "restricted": false },
 		"pools": [fallback],
 	});
@@ -208,7 +232,8 @@ fn write_gpu2_config(config: &Config, dir: &Path, token: &str) -> Result<PathBuf
 	fs::create_dir_all(dir).map_err(|e| format!("{}: {}", dir.display(), e))?;
 	let path = dir.join("config.json");
 	fs::write(&path, serde_json::to_string_pretty(&xmrig).unwrap()).map_err(|e| format!("{}: {}", path.display(), e))?;
-	Ok(path)
+	let args = vec![if cuda { format!("--cuda-devices={}", devices) } else { format!("--opencl-devices={}", devices) }];
+	Ok((path, args))
 }
 
 fn write_gpu_config(config: &Config, dir: &Path) -> Result<PathBuf, String> {
@@ -576,11 +601,12 @@ fn main() {
 	let gpu2_stats = Arc::new(Mutex::new(CpuStats::default()));
 	if gpu2_enabled {
 		let gpu2_dir = base.join("gpu2");
-		let cfg = write_gpu2_config(&config, &gpu2_dir, &token).unwrap_or_else(|e| {
+		let (cfg, extra) = write_gpu2_config(&config, &gpu2_dir, &cpu_dir, &token).unwrap_or_else(|e| {
 			log(&format!("gpu: {}", e));
 			std::process::exit(1)
 		});
-		let args = vec!["-c".to_string(), cfg.display().to_string()];
+		let mut args = vec!["-c".to_string(), cfg.display().to_string()];
+		args.extend(extra);
 		engines.push(Engine::new("GPU2", gpu2_dir, cpu_dir.join(format!("xmrig{}", EXE)), args));
 		let fb = config.gpu.fallback.as_ref().unwrap();
 		log(&format!("GPU2: {} on {} between ProgPoW turns (2% fee on that time)",
