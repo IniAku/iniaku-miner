@@ -10,6 +10,9 @@
 #     gpu-fallback=host:port gpu-fallback-user=<wallet> [gpu-fallback-algo=kawpow] [gpu-fallback-pass=x]
 #       pools used between the Epic RandomX / ProgPoW turns (2% fee on that time only)
 #     fallback-tls=0             no TLS to the fallback pools (default TLS on)
+#     lan=192.168.1.139          the pool node is in your own LAN (router without NAT loopback):
+#                                the region's hostname is pointed at that IP in /etc/hosts.
+#                                Needs a regional Pool URL (id./us./au.epic.iniaku.my.id).
 
 dir=$(dirname "${BASH_SOURCE[0]}")
 . "$dir/h-manifest.conf"
@@ -27,7 +30,7 @@ case "$CUSTOM_URL" in
 esac
 
 cpu=true gpu=true threads=0 devices= tls=true
-cf= cfu= cfa=rx/0 cfp=x gf= gfu= gfa=kawpow gfp=x
+cf= cfu= cfa=rx/0 cfp=x gf= gfu= gfa=kawpow gfp=x lan=
 for a in $CUSTOM_USER_CONFIG; do
 	case "$a" in
 		cpu=0) cpu=false ;;
@@ -43,6 +46,7 @@ for a in $CUSTOM_USER_CONFIG; do
 		gpu-fallback-algo=*) gfa=${a#*=} ;;
 		gpu-fallback-pass=*) gfp=${a#*=} ;;
 		fallback-tls=0) tls=false ;;
+		lan=*) lan=${a#*=} ;;
 		*) echo "unknown extra config argument: $a" ;;
 	esac
 done
@@ -53,6 +57,12 @@ if [[ -z $devices ]]; then
 	devices=$(seq -s, 0 $((n - 1)))
 fi
 driver=opencl
+
+if [[ -n $lan && $region == auto ]]; then
+	echo "lan= needs a regional Pool URL (id./us./au.epic.iniaku.my.id) — ignored"
+	lan=
+fi
+echo "${lan:+$lan $region.epic.iniaku.my.id}" > "$dir/.lan_host"
 
 [[ -n $cf && -z $cfu ]] && echo "cpu-fallback needs cpu-fallback-user — ignored" && cf=
 [[ -n $gf && -z $gfu ]] && echo "gpu-fallback needs gpu-fallback-user — ignored" && gf=
