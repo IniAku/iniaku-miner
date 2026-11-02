@@ -1,0 +1,105 @@
+# iniaku-miner: launcher + engine releases -> Windows zip, Linux tar.gz, HiveOS custom miner.
+# - push to master / workflow_dispatch: build + packages as artifacts
+# - push tag v*: same, then GitHub release (tags containing "beta" are pre-releases)
+name: release
+
+on:
+  push:
+    branches: [master]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  launcher-linux:
+    runs-on: ubuntu-24.04
+    # Ubuntu 20.04 (glibc 2.31): HiveOS and Ubuntu 20.04+
+    container: ubuntu:20.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update && apt-get install -y --no-install-recommends curl ca-certificates build-essential
+          curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+      - name: Build
+        run: |
+          . "$HOME/.cargo/env"
+          cargo build --release --locked
+      - uses: actions/upload-artifact@v4
+        with:
+          name: launcher-linux
+          path: target/release/iniaku-miner
+
+  launcher-windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build
+        shell: bash
+        run: RUSTFLAGS="-C target-feature=+crt-static" cargo build --release --locked
+      - uses: actions/upload-artifact@v4
+        with:
+          name: launcher-windows
+          path: target/release/iniaku-miner.exe
+
+  package:
+    needs: [launcher-linux, launcher-windows]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: launchers
+      - name: Version
+        id: v
+        run: |
+          case "$GITHUB_REF" in
+          refs/tags/v*) v=${GITHUB_REF_NAME#v} ;;
+          *) v="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)-dev.${GITHUB_SHA::7}" ;;
+          esac
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+      - name: Packages
+        run: |
+          v="${{ steps.v.outputs.version }}"
+          chmod +x launchers/launcher-linux/iniaku-miner
+          package/package.sh windows "$v" launchers/launcher-windows/iniaku-miner.exe
+          package/package.sh linux "$v" launchers/launcher-linux/iniaku-miner
+          package/package-hiveos.sh "dist/iniaku-miner-$v-linux-x64.tar.gz" "$v"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: |
+            dist/*.zip
+            dist/*.tar.gz
+            dist/*.sha256
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [package]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          fail_on_unmatched_files: true
+          prerelease: ${{ contains(github.ref_name, 'beta') }}
+          body: |
+            iniaku-miner — one miner for epic.iniaku.my.id (Epic Cash): RandomX on the CPU and ProgPoW
+            on the GPU, from one config file (iniaku-miner.json). Optional fallback pools for the
+            time between Epic turns (CPU: any XMRig CPU algorithm, GPU: e.g. KawPow); 0% fee on
+            epic.iniaku.my.id, 2% on the fallback time only.
+
+            - Windows x64 (.zip)
+            - Linux x64 (.tar.gz, glibc 2.31+)
+            - HiveOS custom miner (iniaku_miner-*.tar.gz)
+
+            Engines: XMRig iniaku (CPU, GPU fallback), epic-miner iniaku (ProgPoW, OpenCL), xmrig-cuda
+            (NVIDIA fallback). See README.txt and VERSIONS.txt in the package.

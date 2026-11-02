@@ -6,7 +6,7 @@ Mines RandomX on the CPU and ProgPoW on the GPU at the same time, from one confi
   gpu/  epic-miner iniaku (ProgPoW, OpenCL/CUDA)   worker <worker>-gpu
 Both show up as separate workers of your wallet on https://epic.iniaku.my.id and are paid
 from the RandomX and the ProgPoW blocks of the pool. Pool fee as on the website; no extra fee
-on epic.iniaku.my.id.
+on epic.iniaku.my.id (2% only on time spent on fallback pools).
 
 Quick start
 -----------
@@ -24,13 +24,26 @@ iniaku-miner.json
   "region"   auto (lowest ping), id, us or au
   "cpu"      "enabled": true/false, "threads": 0 = automatic or a number,
              "huge-pages": true/false,
-             "fallback": a pool for the time between Epic RandomX turns, e.g.
+             "fallback": a pool for the CPU between Epic RandomX turns, e.g.
                {"url": "xmr-eu1.nanopool.org:14433", "user": "<XMR address>", "algo": "rx/0", "tls": true}
-               (2% fee on the fallback time only, see cpu/README.txt)
              "extra-args": more XMRig options, e.g. ["--cpu-priority=1"]
   "gpu"      "enabled": true/false (false on computers without a GPU),
              "devices": GPU numbers, e.g. [0] or [0, 1, 2] for three GPUs,
-             "driver": "opencl" (AMD, NVIDIA, Intel) or "cuda" (NVIDIA, Linux CUDA package)
+             "driver": "opencl" (ProgPoW on AMD and NVIDIA),
+             "fallback": a pool for the GPU between Epic ProgPoW turns, mined by XMRig, e.g.
+               {"url": "gulf.moneroocean.stream:20128", "user": "<XMR address>", "algo": "kawpow", "tls": true}
+             "fallback-backend": "auto" (CUDA on NVIDIA when cpu/xmrig-cuda is present), "cuda", "opencl"
+             "opencl-platform": OpenCL platform for an OpenCL fallback (0 = first, or "AMD")
+
+Fallback pools and fee
+----------------------
+Epic takes turns per block: RandomX, ProgPoW, RandomX, ProgPoW, ... and Cuckoo every 25th.
+Without fallback pools the GPU waits outside the ProgPoW turn and the CPU keeps mining
+RandomX. With fallback pools both switch to them outside their turn and come back the moment
+the turn starts. Time on epic.iniaku.my.id: 0% fee. Time on fallback pools: 2% fee (1 minute
+after 49 minutes, same algorithm, never during an Epic turn).
+The GPU keeps both DAGs in memory (ProgPoW ~2.2 GB + KawPow ~3-5 GB): use 8 GB+ GPUs for a
+KawPow fallback.
 
 Notes
 -----
