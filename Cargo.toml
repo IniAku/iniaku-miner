@@ -1,0 +1,16 @@
+[package]
+name = "iniaku-miner"
+version = "1.0.0"
+edition = "2021"
+description = "One miner for epic.iniaku.my.id: RandomX on the CPU (XMRig iniaku) and ProgPoW on the GPU (epic-miner iniaku)"
+license = "GPL-3.0"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ctrlc = "3"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true

@@ -1,0 +1,14 @@
+{
+    "wallet": "YOUR_EPIC_ADDRESS",
+    "worker": "rig1",
+    "region": "auto",
+    "cpu": {
+        "enabled": true,
+        "threads": 0
+    },
+    "gpu": {
+        "enabled": true,
+        "devices": [0],
+        "driver": "opencl"
+    }
+}
