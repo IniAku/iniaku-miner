@@ -22,6 +22,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const CPU_API_PORT: u16 = 60061;
+const GPU2_API_PORT: u16 = 60062;
 const SUMMARY_EVERY: Duration = Duration::from_secs(60);
 const RESTART_DELAY: Duration = Duration::from_secs(10);
 const QUICK_EXIT: Duration = Duration::from_secs(20);
@@ -81,6 +82,10 @@ struct GpuConfig {
 	/// "opencl" (AMD, NVIDIA, Intel) or "cuda" (NVIDIA, Linux CUDA package only)
 	#[serde(default = "default_driver")]
 	driver: String,
+	/// Pool for the GPU outside the Epic ProgPoW turn, mined by XMRig (OpenCL), e.g.
+	/// {"url": "rvn.pool:443", "user": "<RVN address>.<worker>", "algo": "kawpow", "tls": true}
+	#[serde(default)]
+	fallback: Option<Value>,
 }
 
 impl Default for CpuConfig {
@@ -91,7 +96,7 @@ impl Default for CpuConfig {
 
 impl Default for GpuConfig {
 	fn default() -> Self {
-		GpuConfig { enabled: true, devices: default_devices(), driver: default_driver() }
+		GpuConfig { enabled: true, devices: default_devices(), driver: default_driver(), fallback: None }
 	}
 }
 
@@ -170,6 +175,35 @@ fn write_cpu_config(config: &Config, dir: &Path) -> Result<PathBuf, String> {
 	Ok(path)
 }
 
+/// XMRig on the GPU (OpenCL) for the fallback pool; paused by iniaku-miner during the ProgPoW turn.
+fn write_gpu2_config(config: &Config, dir: &Path, token: &str) -> Result<PathBuf, String> {
+	let mut fallback = config.gpu.fallback.clone().unwrap_or(Value::Null);
+	if !fallback.is_object() || fallback.get("url").is_none() || fallback.get("user").is_none() {
+		return Err("gpu.fallback needs at least \"url\" and \"user\"".into());
+	}
+	if fallback.get("algo").is_none() && fallback.get("coin").is_none() {
+		fallback["algo"] = json!("kawpow");
+	}
+
+	let indexes: Vec<Value> = config.gpu.devices.iter().map(|d| json!(d)).collect();
+	let xmrig = json!({
+		"autosave": false,
+		"donate-level": 0,
+		"colors": false,
+		"print-time": 60,
+		"cpu": { "enabled": false },
+		"opencl": { "enabled": true, "cache": true, "loader": null, "platform": "AUTO", "adl": true, "devices": indexes },
+		"cuda": { "enabled": false },
+		"http": { "enabled": true, "host": "127.0.0.1", "port": GPU2_API_PORT, "access-token": token, "restricted": false },
+		"pools": [fallback],
+	});
+
+	fs::create_dir_all(dir).map_err(|e| format!("{}: {}", dir.display(), e))?;
+	let path = dir.join("config.json");
+	fs::write(&path, serde_json::to_string_pretty(&xmrig).unwrap()).map_err(|e| format!("{}: {}", path.display(), e))?;
+	Ok(path)
+}
+
 fn write_gpu_config(config: &Config, dir: &Path) -> Result<PathBuf, String> {
 	let driver = if config.gpu.driver == "cuda" { 1 } else { 2 };
 	let mut gpus = String::new();
@@ -230,6 +264,8 @@ struct GpuStats {
 	accepted: u64,
 	rejected: u64,
 	waiting: bool,
+	/// Algorithm of the latest Epic job ("progpow", "randomx", "cuckoo"), empty until the first job.
+	turn: String,
 }
 
 #[derive(Default, Clone)]
@@ -248,6 +284,13 @@ fn parse_gpu_line(line: &str, stats: &Mutex<GpuStats>) {
 			s.hashrate = n;
 			s.waiting = false;
 		}
+	} else if line.contains("Got a new job") {
+		if let Some(i) = line.rfind("algorithm: \"") {
+			let rest = &line[i + "algorithm: \"".len()..];
+			if let Some(end) = rest.find('"') {
+				s.turn = rest[..end].to_string();
+			}
+		}
 	} else if line.contains("Share Accepted") {
 		s.accepted += 1;
 	} else if line.contains("Failed to submit a solution") {
@@ -255,16 +298,32 @@ fn parse_gpu_line(line: &str, stats: &Mutex<GpuStats>) {
 	}
 }
 
-fn query_cpu(stats: &Mutex<CpuStats>) {
-	let body = (|| -> Option<Value> {
-		let mut stream = TcpStream::connect_timeout(&([127, 0, 0, 1], CPU_API_PORT).into(), Duration::from_secs(2)).ok()?;
-		stream.set_read_timeout(Some(Duration::from_secs(3))).ok()?;
-		stream.write_all(b"GET /2/summary HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n").ok()?;
-		let mut response = String::new();
-		stream.read_to_string(&mut response).ok()?;
-		let start = response.find("\r\n\r\n")? + 4;
-		serde_json::from_str(&response[start..]).ok()
-	})();
+fn http(port: u16, method: &str, path: &str, token: Option<&str>, body: Option<&str>) -> Option<Value> {
+	let mut stream = TcpStream::connect_timeout(&([127, 0, 0, 1], port).into(), Duration::from_secs(2)).ok()?;
+	stream.set_read_timeout(Some(Duration::from_secs(3))).ok()?;
+	let body = body.unwrap_or("");
+	let auth = token.map(|t| format!("Authorization: Bearer {}\r\n", t)).unwrap_or_default();
+	let request = format!(
+		"{} {} HTTP/1.0\r\nHost: 127.0.0.1\r\n{}Content-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+		method, path, auth, body.len(), body
+	);
+	stream.write_all(request.as_bytes()).ok()?;
+	let mut response = String::new();
+	stream.read_to_string(&mut response).ok()?;
+	let start = response.find("\r\n\r\n")? + 4;
+	// XMRig's HTTP server may write the response twice on one connection: take the first value.
+	serde_json::Deserializer::from_str(&response[start..]).into_iter::<Value>().next()?.ok()
+}
+
+/// pause/resume an XMRig through its JSON-RPC API
+fn xmrig_rpc(port: u16, token: &str, method: &str) -> bool {
+	let body = format!("{{\"method\":\"{}\",\"id\":1,\"jsonrpc\":\"2.0\"}}", method);
+	// XMRig answers {"result": {"status": "OK"}, "error": null, ...}
+	http(port, "POST", "/json_rpc", Some(token), Some(&body)).map(|v| v["error"].is_null() && !v["result"].is_null()).unwrap_or(false)
+}
+
+fn query_xmrig(port: u16, token: Option<&str>, stats: &Mutex<CpuStats>) {
+	let body = http(port, "GET", "/2/summary", token, None);
 
 	let mut s = stats.lock().unwrap();
 	match body {
@@ -504,6 +563,23 @@ fn main() {
 			config.gpu.driver, config.gpu.devices));
 	}
 
+	// GPU outside the ProgPoW turn: XMRig (OpenCL) on the fallback pool, paused during the turn.
+	let gpu2_enabled = config.gpu.enabled && config.gpu.fallback.is_some();
+	let token = format!("{:x}{:x}", SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0), std::process::id());
+	let gpu2_stats = Arc::new(Mutex::new(CpuStats::default()));
+	if gpu2_enabled {
+		let gpu2_dir = base.join("gpu2");
+		let cfg = write_gpu2_config(&config, &gpu2_dir, &token).unwrap_or_else(|e| {
+			log(&format!("gpu: {}", e));
+			std::process::exit(1)
+		});
+		let args = vec!["-c".to_string(), cfg.display().to_string()];
+		engines.push(Engine::new("GPU2", gpu2_dir, cpu_dir.join(format!("xmrig{}", EXE)), args));
+		let fb = config.gpu.fallback.as_ref().unwrap();
+		log(&format!("GPU2: {} on {} between ProgPoW turns (2% fee on that time)",
+			fb.get("algo").and_then(Value::as_str).unwrap_or("kawpow"), fb["url"].as_str().unwrap_or("?")));
+	}
+
 	let stop = Arc::new(AtomicBool::new(false));
 	{
 		let stop = stop.clone();
@@ -517,6 +593,8 @@ fn main() {
 
 	let stats_path = base.join("stats.json");
 	let mut last_summary = Instant::now();
+	let mut gpu2_paused: Option<bool> = None;
+	let mut last_assert = Instant::now();
 
 	while !stop.load(Ordering::SeqCst) {
 		thread::sleep(Duration::from_millis(500));
@@ -524,6 +602,25 @@ fn main() {
 		for engine in engines.iter_mut() {
 			let gpu = if engine.tag == "GPU" { Some(gpu_stats.clone()) } else { None };
 			engine.poll(gpu);
+		}
+
+		if gpu2_enabled {
+			// Pause the fallback while the Epic network is on the ProgPoW turn (and epic-miner runs).
+			let gpu_running = engines.iter().any(|e| e.tag == "GPU" && e.running());
+			let turn = gpu_stats.lock().unwrap().turn.clone();
+			let want_paused = gpu_running && turn == "progpow";
+			let reassert = last_assert.elapsed() >= Duration::from_secs(10);
+			if gpu2_paused != Some(want_paused) || reassert {
+				last_assert = Instant::now();
+				if xmrig_rpc(GPU2_API_PORT, &token, if want_paused { "pause" } else { "resume" }) {
+					if gpu2_paused != Some(want_paused) {
+						log(&format!("GPU: {}", if want_paused { "ProgPoW turn -> epic.iniaku.my.id" } else { "other turn -> fallback pool" }));
+					}
+					gpu2_paused = Some(want_paused);
+				} else {
+					gpu2_paused = None;
+				}
+			}
 		}
 
 		if engines.iter().all(|e| e.gave_up) {
@@ -534,7 +631,10 @@ fn main() {
 		if last_summary.elapsed() >= SUMMARY_EVERY {
 			last_summary = Instant::now();
 			if config.cpu.enabled {
-				query_cpu(&cpu_stats);
+				query_xmrig(CPU_API_PORT, None, &cpu_stats);
+			}
+			if gpu2_enabled {
+				query_xmrig(GPU2_API_PORT, Some(&token), &gpu2_stats);
 			}
 			let cpu = cpu_stats.lock().unwrap().clone();
 			let gpu = gpu_stats.lock().unwrap().clone();
@@ -550,6 +650,12 @@ fn main() {
 				parts.push(format!("GPU ProgPoW {} ({}/{} shares){}", format_rate(gpu.hashrate), gpu.accepted,
 					gpu.accepted + gpu.rejected, if gpu_on { "" } else { " [stopped]" }));
 			}
+			let gpu2 = gpu2_stats.lock().unwrap().clone();
+			let gpu2_on = engines.iter().any(|e| e.tag == "GPU2" && e.running());
+			if gpu2_enabled {
+				parts.push(format!("GPU fallback {} ({}/{} shares){}", format_rate(gpu2.hashrate), gpu2.accepted,
+					gpu2.accepted + gpu2.rejected, if gpu2_on { "" } else { " [stopped]" }));
+			}
 			log(&format!("summary: {}", parts.join(" | ")));
 
 			let stats = json!({
@@ -558,7 +664,9 @@ fn main() {
 				"cpu": { "enabled": config.cpu.enabled, "running": cpu_on, "hashrate": cpu.hashrate,
 					"accepted": cpu.accepted, "rejected": cpu.rejected, "pool": cpu.pool },
 				"gpu": { "enabled": config.gpu.enabled, "running": gpu_on, "hashrate": gpu.hashrate,
-					"accepted": gpu.accepted, "rejected": gpu.rejected, "devices": config.gpu.devices },
+					"accepted": gpu.accepted, "rejected": gpu.rejected, "devices": config.gpu.devices, "turn": gpu.turn },
+				"gpu_fallback": { "enabled": gpu2_enabled, "running": gpu2_on, "hashrate": gpu2.hashrate,
+					"accepted": gpu2.accepted, "rejected": gpu2.rejected, "pool": gpu2.pool },
 			});
 			let _ = fs::write(&stats_path, serde_json::to_string_pretty(&stats).unwrap());
 		}
