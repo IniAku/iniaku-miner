@@ -195,6 +195,19 @@ const CUDA_PLUGIN: &str = "xmrig-cuda.dll";
 #[cfg(not(windows))]
 const CUDA_PLUGIN: &str = "libxmrig-cuda.so";
 
+/// NVIDIA driver installed? ("auto" fallback backend: CUDA only on NVIDIA, AMD/Intel use OpenCL/wgpu)
+fn nvidia_present() -> bool {
+	#[cfg(windows)]
+	{
+		let root = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".into());
+		Path::new(&root).join("System32").join("nvcuda.dll").exists()
+	}
+	#[cfg(not(windows))]
+	{
+		Path::new("/proc/driver/nvidia/version").exists()
+	}
+}
+
 /// XMRig on the GPU for the fallback pool; paused by iniaku-miner during the ProgPoW turn.
 /// Returns the config path and the extra command line arguments (device selection).
 fn write_gpu2_config(config: &Config, dir: &Path, xmrig_dir: &Path, token: &str) -> Result<(PathBuf, Vec<String>), String> {
@@ -210,7 +223,7 @@ fn write_gpu2_config(config: &Config, dir: &Path, xmrig_dir: &Path, token: &str)
 	let cuda = match config.gpu.fallback_backend.as_str() {
 		"cuda" => true,
 		"opencl" => false,
-		_ => plugin.exists(),
+		_ => plugin.exists() && nvidia_present(),
 	};
 	if cuda && !plugin.exists() {
 		return Err(format!("gpu.fallback-backend \"cuda\" needs {}", plugin.display()));
@@ -619,7 +632,7 @@ fn main() {
 			let cuda = match config.gpu.fallback_backend.as_str() {
 				"cuda" => true,
 				"opencl" => false,
-				_ => cpu_dir.join(CUDA_PLUGIN).exists() || config.gpu.driver == "cuda",
+				_ => nvidia_present(),
 			};
 			if cuda {
 				args.push("--cuda-gpu".to_string());
