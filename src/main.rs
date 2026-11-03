@@ -64,7 +64,7 @@ struct CpuConfig {
 	#[serde(default = "yes")]
 	huge_pages: bool,
 	/// Pool for the ProgPoW/Cuckoo turns (see XMRig iniaku README), e.g.
-	/// {"url": "xmr-eu1.nanopool.org:14433", "user": "<XMR address>", "algo": "rx/0", "tls": true}
+	/// {"url": "xmr-eu1.nanopool.org:14433", "user": "YOUR_XMR_ADDRESS", "algo": "rx/0", "tls": true}
 	#[serde(default)]
 	fallback: Option<Value>,
 	#[serde(default)]
@@ -83,7 +83,7 @@ struct GpuConfig {
 	#[serde(default = "default_driver")]
 	driver: String,
 	/// Pool for the GPU outside the Epic ProgPoW turn, mined by XMRig (OpenCL), e.g.
-	/// {"url": "rvn.pool:443", "user": "<RVN address>.<worker>", "algo": "kawpow", "tls": true}
+	/// {"url": "rvn.pool:443", "user": "YOUR_RVN_ADDRESS.rig1", "algo": "kawpow", "tls": true}
 	#[serde(default)]
 	fallback: Option<Value>,
 	/// OpenCL platform for the fallback: index (0 = first) or vendor name ("NVIDIA", "AMD", "Intel").
@@ -135,7 +135,16 @@ fn default_driver() -> String {
 
 fn load_config(path: &Path) -> Result<Config, String> {
 	let text = fs::read_to_string(path).map_err(|e| format!("cannot read {}: {}", path.display(), e))?;
-	let config: Config = serde_json::from_str(&text).map_err(|e| format!("{}: {}", path.display(), e))?;
+	let mut config: Config = serde_json::from_str(&text).map_err(|e| format!("{}: {}", path.display(), e))?;
+	// "<address>" copied with the placeholder brackets: strip them (pools reject '<' '>')
+	for fb in [config.cpu.fallback.as_mut(), config.gpu.fallback.as_mut()].into_iter().flatten() {
+		if let Some(u) = fb.get("user").and_then(Value::as_str) {
+			let clean: String = u.chars().filter(|c| !matches!(c, '<' | '>') && !c.is_whitespace()).collect();
+			if clean != u {
+				fb["user"] = json!(clean);
+			}
+		}
+	}
 
 	if config.wallet.trim().is_empty() || config.wallet.starts_with("YOUR_") {
 		return Err(format!("set your Epic address in {}: \"wallet\": \"es...\"", path.display()));

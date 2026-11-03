@@ -25,16 +25,16 @@ iniaku-miner.json
   "cpu"      "enabled": true/false, "threads": 0 = automatic or a number,
              "huge-pages": true/false,
              "fallback": a pool for the CPU between Epic RandomX turns, e.g.
-               {"url": "xmr-eu1.nanopool.org:14433", "user": "<XMR address>", "algo": "rx/0", "tls": true}
+               {"url": "xmr-eu1.nanopool.org:14433", "user": "YOUR_XMR_ADDRESS", "algo": "rx/0", "tls": true}
              "extra-args": more XMRig options, e.g. ["--cpu-priority=1"]
   "gpu"      "enabled": true/false (false on computers without a GPU),
              "devices": GPU numbers, e.g. [0] or [0, 1, 2] for three GPUs,
              "driver": "opencl" (ProgPoW on AMD and NVIDIA),
              "fallback": a pool for the GPU between Epic ProgPoW turns, mined by XMRig, e.g.
-               {"url": "gulf.moneroocean.stream:20128", "user": "<XMR address>", "algo": "kawpow", "tls": true}
+               {"url": "gulf.moneroocean.stream:20128", "user": "YOUR_XMR_ADDRESS", "algo": "kawpow", "tls": true}
              "fallback-backend": "auto" (CUDA on NVIDIA when cpu/xmrig-cuda is present), "cuda", "opencl"
              Quantus (QTC) instead of KawPow: "algo": "quantus", e.g.
-               {"url": "sg.lproute.com:5660", "user": "<QTC address>.<worker>", "algo": "quantus"}
+               {"url": "sg.lproute.com:5660", "user": "YOUR_QTC_ADDRESS.rig1", "algo": "quantus"}
                (LuckyPool, Singapore; runs gpu/quantus-iniaku, no DAG, little GPU memory)
              "opencl-platform": OpenCL platform for an OpenCL fallback (0 = first, or "AMD")
 
@@ -59,3 +59,7 @@ Notes
   cpu\xmrig.exe and gpu\epic-miner.exe (see cpu\README.txt).
 
 Source: https://github.com/IniAku  —  License: GPL-3.0
+
+Quantus on AMD (HiveOS/Linux): uses our OpenCL engine (same driver as ProgPoW).
+If OpenCL fails it falls back to the Vulkan engine, which needs once:
+  apt update && apt install -y libvulkan1 mesa-vulkan-drivers
