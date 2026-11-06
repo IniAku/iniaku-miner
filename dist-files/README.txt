@@ -21,7 +21,7 @@ iniaku-miner.json
 -----------------
   "wallet"   your Epic address (es...)
   "worker"   rig name; the pool shows <worker>-cpu and <worker>-gpu
-  "region"   auto (lowest ping), id, us or au
+  "region"   auto (lowest ping), id, us, au or eu
   "cpu"      "enabled": true/false, "threads": 0 = automatic or a number,
              "huge-pages": true/false,
              "fallback": a pool for the CPU between Epic RandomX turns, e.g.

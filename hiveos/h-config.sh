@@ -12,7 +12,7 @@
 #     fallback-tls=0             no TLS to the fallback pools (default TLS on)
 #     lan=192.168.1.139          the pool node is in your own LAN (router without NAT loopback):
 #                                the region's hostname is pointed at that IP in /etc/hosts.
-#                                Needs a regional Pool URL (id./us./au.epic.iniaku.my.id).
+#                                Needs a regional Pool URL (id./us./au./eu.epic.iniaku.my.id).
 
 dir=$(dirname "${BASH_SOURCE[0]}")
 . "$dir/h-manifest.conf"
@@ -27,6 +27,7 @@ case "$CUSTOM_URL" in
 	*id.epic*) region=id ;;
 	*us.epic*) region=us ;;
 	*au.epic*) region=au ;;
+	*eu.epic*) region=eu ;;
 esac
 
 cpu=true gpu=true threads=0 devices= tls=true
@@ -59,7 +60,7 @@ fi
 driver=opencl
 
 if [[ -n $lan && $region == auto ]]; then
-	echo "lan= needs a regional Pool URL (id./us./au.epic.iniaku.my.id) — ignored"
+	echo "lan= needs a regional Pool URL (id./us./au./eu.epic.iniaku.my.id) — ignored"
 	lan=
 fi
 echo "${lan:+$lan $region.epic.iniaku.my.id}" > "$dir/.lan_host"
