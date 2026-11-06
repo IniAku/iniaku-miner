@@ -20,7 +20,7 @@ Quick start
 iniaku-miner.json
 -----------------
   "wallet"   your Epic address (es...)
-  "worker"   rig name; the pool shows <worker>-cpu and <worker>-gpu
+  "worker"   rig name; the pool shows <worker>-cpu, <worker>-gpu and <worker>-cuckoo
   "region"   auto (lowest ping), id, us, au or eu
   "cpu"      "enabled": true/false, "threads": 0 = automatic or a number,
              "huge-pages": true/false,
@@ -30,6 +30,8 @@ iniaku-miner.json
   "gpu"      "enabled": true/false (false on computers without a GPU),
              "devices": GPU numbers, e.g. [0] or [0, 1, 2] for three GPUs,
              "driver": "opencl" (ProgPoW on AMD and NVIDIA),
+             "cuckoo": true/false, default true: also mine Cuckoo (Cuckatoo19, OpenCL) on the
+               same GPUs during the Cuckoo turns, shown as <worker>-cuckoo,
              "fallback": a pool for the GPU between Epic ProgPoW turns, mined by XMRig, e.g.
                {"url": "gulf.moneroocean.stream:20128", "user": "YOUR_XMR_ADDRESS", "algo": "kawpow", "tls": true}
              "fallback-backend": "auto" (CUDA on NVIDIA when cpu/xmrig-cuda is present), "cuda", "opencl"

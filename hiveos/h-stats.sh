@@ -22,8 +22,8 @@ stats=$(jq -c '
 		temp: [], fan: [],
 		uptime: 0,
 		ver: .version,
-		ar: [((.cpu.accepted // 0) + (.gpu.accepted // 0) + (.gpu_fallback.accepted // 0)),
-		     ((.cpu.rejected // 0) + (.gpu.rejected // 0) + (.gpu_fallback.rejected // 0))],
+		ar: [((.cpu.accepted // 0) + (.gpu.accepted // 0) + (.gpu_cuckoo.accepted // 0) + (.gpu_fallback.accepted // 0)),
+		     ((.cpu.rejected // 0) + (.gpu.rejected // 0) + (.gpu_cuckoo.rejected // 0) + (.gpu_fallback.rejected // 0))],
 		algo: "progpow+randomx"
 	}' "$s")
 khs=$(jq -r '[.hs[]] | add / 1000' <<< "$stats")

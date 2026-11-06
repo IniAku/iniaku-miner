@@ -30,12 +30,13 @@ case "$CUSTOM_URL" in
 	*eu.epic*) region=eu ;;
 esac
 
-cpu=true gpu=true threads=0 devices= tls=true
+cpu=true gpu=true cuckoo=true threads=0 devices= tls=true
 cf= cfu= cfa=rx/0 cfp=x gf= gfu= gfa=kawpow gfp=x lan=
 for a in $CUSTOM_USER_CONFIG; do
 	case "$a" in
 		cpu=0) cpu=false ;;
 		gpu=0) gpu=false ;;
+		cuckoo=0) cuckoo=false ;;
 		threads=*) threads=${a#*=} ;;
 		devices=*) devices=${a#*=} ;;
 		cpu-fallback=*) cf=${a#*=} ;;
@@ -69,12 +70,12 @@ echo "${lan:+$lan $region.epic.iniaku.my.id}" > "$dir/.lan_host"
 [[ -n $gf && -z $gfu ]] && echo "gpu-fallback needs gpu-fallback-user — ignored" && gf=
 
 jq -n --arg wallet "$wallet" --arg worker "$worker" --arg region "$region" --arg pass "${CUSTOM_PASS:-x}" \
-	--argjson cpu "$cpu" --argjson gpu "$gpu" --argjson threads "$threads" --arg devices "$devices" --arg driver "$driver" \
+	--argjson cpu "$cpu" --argjson gpu "$gpu" --argjson cuckoo "$cuckoo" --argjson threads "$threads" --arg devices "$devices" --arg driver "$driver" \
 	--arg cf "$cf" --arg cfu "$cfu" --arg cfa "$cfa" --arg cfp "$cfp" \
 	--arg gf "$gf" --arg gfu "$gfu" --arg gfa "$gfa" --arg gfp "$gfp" --argjson tls "$tls" '{
 	wallet: $wallet, worker: $worker, region: $region, pass: $pass,
 	cpu: ({enabled: $cpu, threads: $threads}
 		+ (if $cf == "" then {} else {fallback: {url: $cf, user: $cfu, pass: $cfp, algo: $cfa, tls: $tls}} end)),
-	gpu: ({enabled: $gpu, devices: ($devices | split(",") | map(tonumber)), driver: $driver}
+	gpu: ({enabled: $gpu, cuckoo: $cuckoo, devices: ($devices | split(",") | map(tonumber)), driver: $driver}
 		+ (if $gf == "" then {} else {fallback: {url: $gf, user: $gfu, pass: $gfp, algo: $gfa, tls: $tls}} end))
 }' > "$CUSTOM_CONFIG_FILENAME"
