@@ -160,8 +160,8 @@ fn load_config(path: &Path) -> Result<Config, String> {
 	if config.wallet.contains(' ') || config.worker.contains(' ') || config.worker.contains('.') {
 		return Err("wallet and worker must not contain spaces, worker must not contain '.'".into());
 	}
-	if !["auto", "id", "us", "au"].contains(&config.region.as_str()) {
-		return Err(format!("unknown region \"{}\" (valid: auto, id, us, au)", config.region));
+	if !["auto", "id", "us", "au", "eu"].contains(&config.region.as_str()) {
+		return Err(format!("unknown region \"{}\" (valid: auto, id, us, au, eu)", config.region));
 	}
 	if !["opencl", "cuda"].contains(&config.gpu.driver.as_str()) {
 		return Err(format!("unknown gpu driver \"{}\" (valid: opencl, cuda)", config.gpu.driver));
