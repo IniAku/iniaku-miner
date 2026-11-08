@@ -30,6 +30,8 @@ iniaku-miner.json
   "gpu"      "enabled": true/false (false on computers without a GPU),
              "devices": GPU numbers, e.g. [0] or [0, 1, 2] for three GPUs,
              "driver": "opencl" (ProgPoW on AMD and NVIDIA),
+             "opencl_platform": "auto" (default) picks the NVIDIA/AMD OpenCL platform, so an
+               integrated Intel GPU is skipped; or an index (0 = first) or "NVIDIA"/"AMD"/"Intel",
              "cuckoo": true/false, default true: also mine Cuckoo (Cuckatoo19, OpenCL) on the
                same GPUs during the Cuckoo turns, shown as <worker>-cuckoo,
              "fallback": a pool for the GPU between Epic ProgPoW turns, mined by XMRig, e.g.

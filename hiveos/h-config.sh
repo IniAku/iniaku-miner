@@ -13,6 +13,8 @@
 #     lan=192.168.1.139          the pool node is in your own LAN (router without NAT loopback):
 #                                the region's hostname is pointed at that IP in /etc/hosts.
 #                                Needs a regional Pool URL (id./us./au./eu.epic.iniaku.my.id).
+#     platform=NVIDIA            OpenCL platform for the GPU (default auto: NVIDIA/AMD, skips an
+#                                integrated Intel GPU); index or vendor name
 
 dir=$(dirname "${BASH_SOURCE[0]}")
 . "$dir/h-manifest.conf"
@@ -31,7 +33,7 @@ case "$CUSTOM_URL" in
 esac
 
 cpu=true gpu=true cuckoo=true threads=0 devices= tls=true
-cf= cfu= cfa=rx/0 cfp=x gf= gfu= gfa=kawpow gfp=x lan=
+cf= cfu= cfa=rx/0 cfp=x gf= gfu= gfa=kawpow gfp=x lan= platform=auto
 for a in $CUSTOM_USER_CONFIG; do
 	case "$a" in
 		cpu=0) cpu=false ;;
@@ -49,6 +51,7 @@ for a in $CUSTOM_USER_CONFIG; do
 		gpu-fallback-pass=*) gfp=${a#*=} ;;
 		fallback-tls=0) tls=false ;;
 		lan=*) lan=${a#*=} ;;
+		platform=*) platform=${a#*=} ;;
 		*) echo "unknown extra config argument: $a" ;;
 	esac
 done
@@ -70,12 +73,13 @@ echo "${lan:+$lan $region.epic.iniaku.my.id}" > "$dir/.lan_host"
 [[ -n $gf && -z $gfu ]] && echo "gpu-fallback needs gpu-fallback-user — ignored" && gf=
 
 jq -n --arg wallet "$wallet" --arg worker "$worker" --arg region "$region" --arg pass "${CUSTOM_PASS:-x}" \
-	--argjson cpu "$cpu" --argjson gpu "$gpu" --argjson cuckoo "$cuckoo" --argjson threads "$threads" --arg devices "$devices" --arg driver "$driver" \
+	--argjson cpu "$cpu" --argjson gpu "$gpu" --argjson cuckoo "$cuckoo" --argjson threads "$threads" --arg devices "$devices" --arg driver "$driver" --arg platform "$platform" \
 	--arg cf "$cf" --arg cfu "$cfu" --arg cfa "$cfa" --arg cfp "$cfp" \
 	--arg gf "$gf" --arg gfu "$gfu" --arg gfa "$gfa" --arg gfp "$gfp" --argjson tls "$tls" '{
 	wallet: $wallet, worker: $worker, region: $region, pass: $pass,
 	cpu: ({enabled: $cpu, threads: $threads}
 		+ (if $cf == "" then {} else {fallback: {url: $cf, user: $cfu, pass: $cfp, algo: $cfa, tls: $tls}} end)),
-	gpu: ({enabled: $gpu, cuckoo: $cuckoo, devices: ($devices | split(",") | map(tonumber)), driver: $driver}
+	gpu: ({enabled: $gpu, cuckoo: $cuckoo, devices: ($devices | split(",") | map(tonumber)), driver: $driver,
+		opencl_platform: (if ($platform | test("^[0-9]+$")) then ($platform | tonumber) else $platform end)}
 		+ (if $gf == "" then {} else {fallback: {url: $gf, user: $gfu, pass: $gfp, algo: $gfa, tls: $tls}} end))
 }' > "$CUSTOM_CONFIG_FILENAME"

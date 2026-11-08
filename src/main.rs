@@ -86,8 +86,9 @@ struct GpuConfig {
 	/// {"url": "rvn.pool:443", "user": "YOUR_RVN_ADDRESS.rig1", "algo": "kawpow", "tls": true}
 	#[serde(default)]
 	fallback: Option<Value>,
-	/// OpenCL platform for the fallback: index (0 = first) or vendor name ("NVIDIA", "AMD", "Intel").
-	/// XMRig's own "AUTO" only finds AMD.
+	/// OpenCL platform for all GPU engines: "auto" (default: the NVIDIA/AMD platform, so an
+	/// integrated Intel GPU listed first is skipped), an index (0 = first) or a vendor name
+	/// ("NVIDIA", "AMD", "Intel"). Passed to epic-miner as INIAKU_OCL_PLATFORM.
 	#[serde(default = "default_platform")]
 	opencl_platform: Value,
 	/// Backend of the GPU fallback: "auto" (CUDA when the xmrig-cuda plugin is next to xmrig,
@@ -135,7 +136,32 @@ fn default_backend() -> String {
 	"auto".into()
 }
 fn default_platform() -> Value {
-	json!(0)
+	json!("auto")
+}
+
+fn platform_is_auto(v: &Value) -> bool {
+	v.is_null() || v.as_str().map(|s| s.trim().is_empty() || s.eq_ignore_ascii_case("auto")).unwrap_or(false)
+}
+
+/// INIAKU_OCL_PLATFORM for epic-miner (ProgPoW + Cuckoo), None = let the engines choose.
+fn platform_env(v: &Value) -> Option<String> {
+	if platform_is_auto(v) {
+		return None;
+	}
+	match v {
+		Value::Number(n) => Some(n.to_string()),
+		Value::String(s) => Some(s.trim().to_string()),
+		_ => None,
+	}
+}
+
+/// XMRig's "platform" for the GPU fallback: its own AUTO only finds AMD, so pick by driver.
+fn xmrig_platform(v: &Value) -> Value {
+	if platform_is_auto(v) {
+		json!(if nvidia_present() { "NVIDIA" } else { "AMD" })
+	} else {
+		v.clone()
+	}
 }
 fn default_driver() -> String {
 	"opencl".into()
@@ -253,7 +279,7 @@ fn write_gpu2_config(config: &Config, dir: &Path, xmrig_dir: &Path, token: &str)
 		"colors": false,
 		"print-time": 60,
 		"cpu": { "enabled": false },
-		"opencl": { "enabled": !cuda, "cache": true, "loader": null, "platform": config.gpu.opencl_platform, "adl": true },
+		"opencl": { "enabled": !cuda, "cache": true, "loader": null, "platform": xmrig_platform(&config.gpu.opencl_platform), "adl": true },
 		"cuda": { "enabled": cuda, "loader": if cuda { json!(plugin.display().to_string()) } else { Value::Null }, "nvml": true },
 		"http": { "enabled": true, "host": "127.0.0.1", "port": GPU2_API_PORT, "access-token": token, "restricted": false },
 		"pools": [fallback],
@@ -320,7 +346,8 @@ nthreads = 1
 /// Runs in its own directory (log, config); plugins come from gpu/plugins.
 fn write_cuckoo_config(config: &Config, dir: &Path, plugin_dir: &Path) -> Result<PathBuf, String> {
 	fs::create_dir_all(dir).map_err(|e| format!("{}: {}", dir.display(), e))?;
-	let platform = config.gpu.opencl_platform.as_u64().unwrap_or(0);
+	// 0 = let the plugin choose (or follow INIAKU_OCL_PLATFORM); its own 1/2 codes mean AMD/NVIDIA.
+	let platform = 0;
 	let mut plugins = String::new();
 	for device in &config.gpu.devices {
 		plugins += &format!(
@@ -646,6 +673,14 @@ fn main() {
 			std::process::exit(1);
 		}
 	};
+	// Inherited by the epic-miner processes (ProgPoW and Cuckoo lanes).
+	match platform_env(&config.gpu.opencl_platform) {
+		Some(p) => {
+			std::env::set_var("INIAKU_OCL_PLATFORM", &p);
+			log(&format!("GPU: OpenCL platform {} (from opencl_platform)", p));
+		}
+		None => std::env::remove_var("INIAKU_OCL_PLATFORM"),
+	}
 
 	let cpu_dir = base.join("cpu");
 	let gpu_dir = base.join("gpu");
