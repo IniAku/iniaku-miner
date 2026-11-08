@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Sourced by the HiveOS agent: $khs and $stats from iniaku-miner's stats.json (written every minute).
 # HiveOS shows one algorithm per miner: the GPU (ProgPoW, or the fallback algo between turns) is
-# reported per GPU, the CPU RandomX hashrate is added to the total and shown as an extra "GPU".
+# reported per GPU (the total split evenly), the CPU RandomX hashrate is added to the total and
+# shown as an extra "GPU".
 
 dir=$(dirname "${BASH_SOURCE[0]}")
 . "$dir/h-manifest.conf"
@@ -15,7 +16,9 @@ fi
 
 stats=$(jq -c '
 	(.gpu.devices // [0]) as $dev
-	| (if .gpu.enabled then ((.gpu.hashrate // 0) / ($dev | length)) else 0 end) as $per
+	| (if (.gpu_fallback.running // false) and (((.gpu.running // false) | not) or (.gpu.turn != "progpow"))
+		then (.gpu_fallback.hashrate // 0) else (.gpu.hashrate // 0) end) as $gpu_rate
+	| (if .gpu.enabled then ($gpu_rate / ($dev | length)) else 0 end) as $per
 	| {
 		hs: ([$dev[] | $per] + (if .cpu.enabled then [.cpu.hashrate // 0] else [] end)),
 		hs_units: "hs",
