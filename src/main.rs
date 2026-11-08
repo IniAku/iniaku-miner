@@ -88,8 +88,8 @@ struct GpuConfig {
 	fallback: Option<Value>,
 	/// OpenCL platform for all GPU engines: "auto" (default: the NVIDIA/AMD platform, so an
 	/// integrated Intel GPU listed first is skipped), an index (0 = first) or a vendor name
-	/// ("NVIDIA", "AMD", "Intel"). Passed to epic-miner as INIAKU_OCL_PLATFORM.
-	#[serde(default = "default_platform")]
+	/// ("NVIDIA", "AMD", "Intel"). Key: "opencl-platform". Passed to epic-miner as INIAKU_OCL_PLATFORM.
+	#[serde(default = "default_platform", alias = "opencl_platform")]
 	opencl_platform: Value,
 	/// Backend of the GPU fallback: "auto" (CUDA when the xmrig-cuda plugin is next to xmrig,
 	/// needed for KawPow on NVIDIA), "cuda" or "opencl" (AMD).

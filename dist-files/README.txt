@@ -30,7 +30,7 @@ iniaku-miner.json
   "gpu"      "enabled": true/false (false on computers without a GPU),
              "devices": GPU numbers, e.g. [0] or [0, 1, 2] for three GPUs,
              "driver": "opencl" (ProgPoW on AMD and NVIDIA),
-             "opencl_platform": "auto" (default) picks the NVIDIA/AMD OpenCL platform, so an
+             "opencl-platform": "auto" (default) picks the NVIDIA/AMD OpenCL platform, so an
                integrated Intel GPU is skipped; or an index (0 = first) or "NVIDIA"/"AMD"/"Intel",
              "cuckoo": true/false, default true: also mine Cuckoo (Cuckatoo19, OpenCL) on the
                same GPUs during the Cuckoo turns, shown as <worker>-cuckoo,
@@ -40,7 +40,6 @@ iniaku-miner.json
              Quantus (QTC) instead of KawPow: "algo": "quantus", e.g.
                {"url": "sg.lproute.com:5660", "user": "YOUR_QTC_ADDRESS.rig1", "algo": "quantus"}
                (LuckyPool, Singapore; runs gpu/quantus-iniaku, no DAG, little GPU memory)
-             "opencl-platform": OpenCL platform for an OpenCL fallback (0 = first, or "AMD")
 
 Fallback pools and fee
 ----------------------

@@ -80,6 +80,6 @@ jq -n --arg wallet "$wallet" --arg worker "$worker" --arg region "$region" --arg
 	cpu: ({enabled: $cpu, threads: $threads}
 		+ (if $cf == "" then {} else {fallback: {url: $cf, user: $cfu, pass: $cfp, algo: $cfa, tls: $tls}} end)),
 	gpu: ({enabled: $gpu, cuckoo: $cuckoo, devices: ($devices | split(",") | map(tonumber)), driver: $driver,
-		opencl_platform: (if ($platform | test("^[0-9]+$")) then ($platform | tonumber) else $platform end)}
+		"opencl-platform": (if ($platform | test("^[0-9]+$")) then ($platform | tonumber) else $platform end)}
 		+ (if $gf == "" then {} else {fallback: {url: $gf, user: $gfu, pass: $gfp, algo: $gfa, tls: $tls}} end))
 }' > "$CUSTOM_CONFIG_FILENAME"
