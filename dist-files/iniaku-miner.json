@@ -8,7 +8,7 @@
     },
     "gpu": {
         "enabled": true,
-        "devices": [0],
+        "devices": "all",
         "driver": "opencl"
     }
 }

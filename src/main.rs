@@ -76,8 +76,9 @@ struct CpuConfig {
 struct GpuConfig {
 	#[serde(default = "yes")]
 	enabled: bool,
-	/// GPU indexes, e.g. [0, 1, 2]
-	#[serde(default = "default_devices")]
+	/// GPU indexes, e.g. [0, 1, 2], or "all" (default): every GPU on the OpenCL platform the
+	/// engines use. Empty after loading = "all", filled in at start by detect_gpus().
+	#[serde(default = "default_devices", deserialize_with = "de_devices")]
 	devices: Vec<u32>,
 	/// "opencl" (AMD, NVIDIA, Intel) or "cuda" (NVIDIA, Linux CUDA package only)
 	#[serde(default = "default_driver")]
@@ -130,7 +131,137 @@ fn default_true() -> bool {
 }
 
 fn default_devices() -> Vec<u32> {
-	vec![0]
+	vec![]
+}
+
+/// "devices": "all" (also "auto", "", "*") is stored as an empty list. Users write GPU lists in
+/// many ways, so all of these mean GPUs 0-3: [0, 1, 2, 3], "0,1,2,3", "0 1 2 3", "0;1;2;3",
+/// ["0", "1", "2", "3"], "0-3". A single number (2 or "2") means only that GPU.
+fn de_devices<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<u32>, D::Error> {
+	parse_devices(&Value::deserialize(d)?).map_err(serde::de::Error::custom)
+}
+
+fn parse_devices(v: &Value) -> Result<Vec<u32>, String> {
+	const HINT: &str = "gpu.devices must be \"all\" or GPU numbers, e.g. [0, 1, 2, 3] or \"0,1,2,3\"";
+	let mut out: Vec<u32> = Vec::new();
+	let mut push = |n: u32, out: &mut Vec<u32>| {
+		if !out.contains(&n) {
+			out.push(n);
+		}
+	};
+	let parse_text = |t: &str, out: &mut Vec<u32>, push: &mut dyn FnMut(u32, &mut Vec<u32>)| -> Result<bool, String> {
+		let t = t.trim().trim_matches(|c| c == '[' || c == ']').trim();
+		if t.is_empty() || t == "*" || t.eq_ignore_ascii_case("all") || t.eq_ignore_ascii_case("auto") {
+			return Ok(true);
+		}
+		for part in t.split(|c: char| c == ',' || c == ';' || c.is_whitespace()).filter(|p| !p.is_empty()) {
+			if let Some((a, b)) = part.split_once('-') {
+				let (a, b) = (a.trim().parse::<u32>().map_err(|_| HINT)?, b.trim().parse::<u32>().map_err(|_| HINT)?);
+				if a > b || b - a > 63 {
+					return Err(HINT.into());
+				}
+				for n in a..=b {
+					push(n, out);
+				}
+			} else {
+				push(part.parse::<u32>().map_err(|_| HINT)?, out);
+			}
+		}
+		Ok(false)
+	};
+	match v {
+		Value::Null => return Ok(vec![]),
+		Value::String(s) => {
+			if parse_text(s, &mut out, &mut push)? {
+				return Ok(vec![]);
+			}
+		}
+		Value::Number(n) => push(n.as_u64().filter(|n| *n < 64).ok_or(HINT)? as u32, &mut out),
+		Value::Array(a) => {
+			for item in a {
+				match item {
+					Value::Number(n) => push(n.as_u64().filter(|n| *n < 64).ok_or(HINT)? as u32, &mut out),
+					Value::String(s) => {
+						if parse_text(s, &mut out, &mut push)? {
+							return Ok(vec![]);
+						}
+					}
+					_ => return Err(HINT.into()),
+				}
+			}
+		}
+		_ => return Err(HINT.into()),
+	}
+	if out.iter().any(|n| *n >= 64) {
+		return Err(HINT.into());
+	}
+	Ok(out)
+}
+
+/// Counts the GPUs on the OpenCL platform epic-miner picks (same rule as its pickPlatform():
+/// the configured opencl-platform, else the first platform with an NVIDIA/AMD GPU, else the
+/// first with any GPU). Returns (GPU count, platform label).
+fn detect_gpus(platform: &Value) -> Result<(usize, String), String> {
+	use std::ffi::c_void;
+	type GetPlatformIds = unsafe extern "system" fn(u32, *mut *mut c_void, *mut u32) -> i32;
+	type GetPlatformInfo = unsafe extern "system" fn(*mut c_void, u32, usize, *mut c_void, *mut usize) -> i32;
+	type GetDeviceIds = unsafe extern "system" fn(*mut c_void, u64, u32, *mut *mut c_void, *mut u32) -> i32;
+	const CL_PLATFORM_NAME: u32 = 0x0902;
+	const CL_PLATFORM_VENDOR: u32 = 0x0903;
+	const CL_DEVICE_TYPE_GPU_ACCEL: u64 = (1 << 2) | (1 << 3);
+
+	let names: &[&str] = if cfg!(windows) { &["OpenCL.dll"] } else { &["libOpenCL.so.1", "libOpenCL.so"] };
+	let lib = names
+		.iter()
+		.find_map(|n| unsafe { libloading::Library::new(n).ok() })
+		.ok_or("no OpenCL driver found (OpenCL.dll / libOpenCL.so)")?;
+	unsafe {
+		let get_ids: libloading::Symbol<GetPlatformIds> = lib.get(b"clGetPlatformIDs\0").map_err(|e| e.to_string())?;
+		let get_info: libloading::Symbol<GetPlatformInfo> = lib.get(b"clGetPlatformInfo\0").map_err(|e| e.to_string())?;
+		let get_devs: libloading::Symbol<GetDeviceIds> = lib.get(b"clGetDeviceIDs\0").map_err(|e| e.to_string())?;
+
+		let mut n = 0u32;
+		if get_ids(0, std::ptr::null_mut(), &mut n) != 0 || n == 0 {
+			return Err("no OpenCL platform".into());
+		}
+		let mut ids = vec![std::ptr::null_mut::<c_void>(); n as usize];
+		if get_ids(n, ids.as_mut_ptr(), std::ptr::null_mut()) != 0 {
+			return Err("clGetPlatformIDs failed".into());
+		}
+		let info = |p: *mut c_void, what: u32| -> String {
+			let mut buf = vec![0u8; 256];
+			let mut len = 0usize;
+			if get_info(p, what, buf.len(), buf.as_mut_ptr() as *mut c_void, &mut len) != 0 {
+				return String::new();
+			}
+			buf.truncate(len.min(buf.len()));
+			String::from_utf8_lossy(&buf).trim_end_matches('\0').trim().to_string()
+		};
+		let label = |p| format!("{} / {}", info(p, CL_PLATFORM_NAME), info(p, CL_PLATFORM_VENDOR));
+		let gpus = |p: *mut c_void| -> usize {
+			let mut c = 0u32;
+			if get_devs(p, CL_DEVICE_TYPE_GPU_ACCEL, 0, std::ptr::null_mut(), &mut c) != 0 {
+				return 0;
+			}
+			c as usize
+		};
+
+		let pick = match platform_env(platform) {
+			Some(sel) if sel.chars().all(|c| c.is_ascii_digit()) => sel.parse::<usize>().ok().filter(|i| *i < ids.len()),
+			Some(sel) => ids.iter().position(|p| label(*p).to_lowercase().contains(&sel.to_lowercase())),
+			None => None,
+		}
+		.or_else(|| {
+			ids.iter().position(|p| {
+				let l = label(*p).to_lowercase();
+				(l.contains("nvidia") || l.contains("amd") || l.contains("advanced micro")) && gpus(*p) > 0
+			})
+		})
+		.or_else(|| ids.iter().position(|p| gpus(*p) > 0))
+		.unwrap_or(0);
+
+		Ok((gpus(ids[pick]), label(ids[pick])))
+	}
 }
 fn default_backend() -> String {
 	"auto".into()
@@ -646,7 +777,7 @@ fn now() -> u64 {
 
 fn usage() -> ! {
 	println!("iniaku-miner {} — RandomX (CPU) + ProgPoW (GPU) for epic.iniaku.my.id", VERSION);
-	println!("usage: iniaku-miner [-c iniaku-miner.json]");
+	println!("usage: iniaku-miner [-c iniaku-miner.json] | --list-gpus | --version");
 	std::process::exit(0);
 }
 
@@ -665,13 +796,22 @@ fn main() {
 				println!("iniaku-miner {}", VERSION);
 				return;
 			}
+			"--list-gpus" => {
+				// Same detection as "devices": "all"; INIAKU_OCL_PLATFORM / opencl-platform respected.
+				let platform = std::env::var("INIAKU_OCL_PLATFORM").map(Value::String).unwrap_or(Value::Null);
+				match detect_gpus(&platform) {
+					Ok((n, label)) => println!("{} GPU(s) on {} -> \"devices\": {:?}", n, label, (0..n as u32).collect::<Vec<_>>()),
+					Err(e) => println!("could not list GPUs: {}", e),
+				}
+				return;
+			}
 			_ => usage(),
 		}
 	}
 
 	log(&format!("iniaku-miner {} — RandomX on the CPU + ProgPoW on the GPU, pool epic.iniaku.my.id", VERSION));
 
-	let config = match load_config(&config_path) {
+	let mut config = match load_config(&config_path) {
 		Ok(c) => c,
 		Err(e) => {
 			log(&format!("config error: {}", e));
@@ -685,6 +825,37 @@ fn main() {
 			log(&format!("GPU: OpenCL platform {} (from opencl_platform)", p));
 		}
 		None => std::env::remove_var("INIAKU_OCL_PLATFORM"),
+	}
+	// "devices": [..] with numbers this computer does not have (e.g. [1, 2, 3, 4] on 4 GPUs,
+	// which are 0-3): drop those, so the engines do not fail on a missing GPU.
+	if config.gpu.enabled && !config.gpu.devices.is_empty() {
+		if let Ok((n, label)) = detect_gpus(&config.gpu.opencl_platform) {
+			if n > 0 && config.gpu.devices.iter().any(|d| *d as usize >= n) {
+				let (keep, gone): (Vec<u32>, Vec<u32>) = config.gpu.devices.iter().copied().partition(|d| (*d as usize) < n);
+				log(&format!(
+					"GPU: this computer has {} GPU(s) on {}, numbered 0-{}; GPU {:?} does not exist and is skipped. Use \"devices\": \"all\" for every GPU",
+					n, label, n - 1, gone
+				));
+				config.gpu.devices = keep;
+			}
+		}
+	}
+	// "devices": "all" (default): every GPU on the platform the engines use.
+	if config.gpu.enabled && config.gpu.devices.is_empty() {
+		match detect_gpus(&config.gpu.opencl_platform) {
+			Ok((n, label)) if n > 0 => {
+				config.gpu.devices = (0..n as u32).collect();
+				log(&format!("GPU: found {} GPU(s) on {}", n, label));
+			}
+			Ok((_, label)) => {
+				config.gpu.devices = vec![0];
+				log(&format!("GPU: no GPU found on {}, trying GPU 0 (set gpu.devices or gpu.enabled=false)", label));
+			}
+			Err(e) => {
+				config.gpu.devices = vec![0];
+				log(&format!("GPU: could not list GPUs ({}), using GPU 0; set gpu.devices, e.g. [0, 1, 2]", e));
+			}
+		}
 	}
 
 	let cpu_dir = base.join("cpu");
@@ -916,5 +1087,29 @@ mod tests {
 		assert_eq!(s.lock().unwrap().hashrate, 12.5);
 		parse_gpu_line("[CUCKOO] INFO Waiting for Cuckoo turn (network is mining ProgPow now; Cuckoo gets ~4% of blocks)", &s);
 		assert_eq!(s.lock().unwrap().hashrate, 0.0);
+	}
+
+	fn devices(gpu: &str) -> Result<Vec<u32>, String> {
+		let text = format!(r#"{{"wallet": "es1", "gpu": {}}}"#, gpu);
+		serde_json::from_str::<Config>(&text).map(|c| c.gpu.devices).map_err(|e| e.to_string())
+	}
+
+	#[test]
+	fn gpu_devices_forms() {
+		let none = Vec::<u32>::new();
+		assert_eq!(devices(r#"{}"#).unwrap(), none); // default = all
+		for all in [r#""all""#, r#""ALL""#, r#""auto""#, r#""""#, r#""*""#, r#"["all"]"#, "null"] {
+			assert_eq!(devices(&format!(r#"{{"devices": {}}}"#, all)).unwrap(), none, "{}", all);
+		}
+		let four = vec![0, 1, 2, 3];
+		for form in [r#"[0, 1, 2, 3]"#, r#""0,1,2,3""#, r#""0, 1, 2, 3""#, r#""0 1 2 3""#, r#""0;1;2;3""#, r#"["0","1","2","3"]"#, r#""0-3""#, r#""[0,1,2,3]""#, r#"["0,1", 2, "3"]"#, r#"[0, 1, 1, 2, 3]"#] {
+			assert_eq!(devices(&format!(r#"{{"devices": {}}}"#, form)).unwrap(), four, "{}", form);
+		}
+		assert_eq!(devices(r#"{"devices": [0, 2]}"#).unwrap(), vec![0, 2]);
+		assert_eq!(devices(r#"{"devices": 2}"#).unwrap(), vec![2]);
+		assert_eq!(devices(r#"{"devices": "2"}"#).unwrap(), vec![2]);
+		for bad in [r#""two""#, r#"[-1]"#, r#"[1.5]"#, r#""3-1""#, r#"{"a": 1}"#, r#"[true]"#, r#"[99]"#] {
+			assert!(devices(&format!(r#"{{"devices": {}}}"#, bad)).is_err(), "{}", bad);
+		}
 	}
 }

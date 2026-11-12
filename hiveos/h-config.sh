@@ -5,7 +5,7 @@
 #   Extra config arguments (optional, space separated):
 #     cpu=0 | gpu=0              disable the CPU (RandomX) or GPU (ProgPoW) part
 #     threads=6                  CPU threads (default automatic)
-#     devices=0,1                GPUs (default: all GPUs HiveOS detected)
+#     devices=0,1                GPUs: 0,1,2 or 0-3 or all (default: all GPUs HiveOS detected)
 #     cpu-fallback=host:port cpu-fallback-user=<wallet> [cpu-fallback-algo=rx/0] [cpu-fallback-pass=x]
 #     gpu-fallback=host:port gpu-fallback-user=<wallet> [gpu-fallback-algo=kawpow] [gpu-fallback-pass=x]
 #       pools used between the Epic RandomX / ProgPoW turns (2% fee on that time only)
@@ -79,7 +79,7 @@ jq -n --arg wallet "$wallet" --arg worker "$worker" --arg region "$region" --arg
 	wallet: $wallet, worker: $worker, region: $region, pass: $pass,
 	cpu: ({enabled: $cpu, threads: $threads}
 		+ (if $cf == "" then {} else {fallback: {url: $cf, user: $cfu, pass: $cfp, algo: $cfa, tls: $tls}} end)),
-	gpu: ({enabled: $gpu, cuckoo: $cuckoo, devices: ($devices | split(",") | map(tonumber)), driver: $driver,
+	gpu: ({enabled: $gpu, cuckoo: $cuckoo, devices: $devices, driver: $driver,
 		"opencl-platform": (if ($platform | test("^[0-9]+$")) then ($platform | tonumber) else $platform end)}
 		+ (if $gf == "" then {} else {fallback: {url: $gf, user: $gfu, pass: $gfp, algo: $gfa, tls: $tls}} end))
 }' > "$CUSTOM_CONFIG_FILENAME"

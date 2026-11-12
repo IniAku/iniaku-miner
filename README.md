@@ -38,11 +38,11 @@ Minimal config:
     "worker": "rig1",
     "region": "auto",
     "cpu": { "enabled": true, "threads": 0 },
-    "gpu": { "enabled": true, "devices": [0], "driver": "opencl" }
+    "gpu": { "enabled": true, "devices": "all", "driver": "opencl" }
 }
 ```
 
-For several GPUs, list them: `"devices": [0, 1, 2]`. On a computer without a GPU, set `"enabled": false` in `gpu`.
+`"devices": "all"` mines on every GPU (`iniaku-miner --list-gpus` shows what it finds). To use only some, list them: `"devices": [0, 2]`. GPUs are numbered from 0, so 4 GPUs are `[0, 1, 2, 3]`; `"0,1,2,3"`, `"0 1 2 3"` and `"0-3"` work too. A number the computer does not have is skipped with a warning. On a computer without a GPU, set `"enabled": false` in `gpu`.
 
 Unknown keys in the config stop the miner at startup, so check the spelling if it refuses to start.
 
@@ -59,7 +59,7 @@ Unknown keys in the config stop the miner at startup, so check the spelling if i
 | `cpu.fallback` | Pool for the CPU between Epic RandomX turns |
 | `cpu.extra-args` | More XMRig options, e.g. `["--cpu-priority=1"]` |
 | `gpu.enabled` | `true` or `false` |
-| `gpu.devices` | GPU numbers, e.g. `[0, 1, 2]` |
+| `gpu.devices` | `"all"` (default) or GPU numbers counted from 0, e.g. `[0, 2]`, `"0,1,2,3"`, `"0-3"` |
 | `gpu.driver` | `opencl` |
 | `gpu.opencl-platform` | `auto` (default) picks the NVIDIA or AMD platform and skips an integrated Intel GPU. Or an index (`0` = first), or `NVIDIA`, `AMD`, `Intel` |
 | `gpu.cuckoo` | `true` (default) also mines Cuckoo on the same GPUs during Cuckoo turns |
@@ -85,7 +85,7 @@ Add `fallback` to the `gpu` section:
 ```json
 "gpu": {
     "enabled": true,
-    "devices": [0],
+    "devices": "all",
     "driver": "opencl",
     "fallback": {
         "url": "sg.lproute.com:5660",

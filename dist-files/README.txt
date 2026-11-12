@@ -28,7 +28,9 @@ iniaku-miner.json
                {"url": "xmr-eu1.nanopool.org:14433", "user": "YOUR_XMR_ADDRESS", "algo": "rx/0", "tls": true}
              "extra-args": more XMRig options, e.g. ["--cpu-priority=1"]
   "gpu"      "enabled": true/false (false on computers without a GPU),
-             "devices": GPU numbers, e.g. [0] or [0, 1, 2] for three GPUs,
+             "devices": "all" (default) = every GPU, or GPU numbers counted from 0,
+               e.g. [0, 2]; 4 GPUs = [0, 1, 2, 3] (also "0,1,2,3" or "0-3");
+               "iniaku-miner --list-gpus" shows the GPUs it finds,
              "driver": "opencl" (ProgPoW on AMD and NVIDIA),
              "opencl-platform": "auto" (default) picks the NVIDIA/AMD OpenCL platform, so an
                integrated Intel GPU is skipped; or an index (0 = first) or "NVIDIA"/"AMD"/"Intel",
