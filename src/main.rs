@@ -428,6 +428,11 @@ fn parse_gpu_line(line: &str, stats: &Mutex<GpuStats>) {
 			s.hashrate = n;
 			s.waiting = false;
 		}
+	} else if line.contains("Waiting for ") && line.contains(" turn (network is mining") {
+		// epic-miner outside its turn (ProgPoW since epic-miner 2.3.1-iniaku.17, Cuckoo before):
+		// solvers are paused, so no speed instead of the last measured one.
+		s.hashrate = 0.0;
+		s.waiting = true;
 	} else if line.contains("Got a new job") {
 		if let Some(i) = line.rfind("algorithm: \"") {
 			let rest = &line[i + "algorithm: \"".len()..];
@@ -892,5 +897,24 @@ fn short(wallet: &str) -> String {
 		format!("{}…{}", &wallet[..8], &wallet[wallet.len() - 6..])
 	} else {
 		wallet.to_string()
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn gpu_waiting_line_clears_speed() {
+		let s = Mutex::new(GpuStats::default());
+		parse_gpu_line("[GPU] INFO Mining: ProgPow at 108713547 hps (hashes per second)", &s);
+		assert_eq!(s.lock().unwrap().hashrate, 108713547.0);
+		parse_gpu_line("[GPU] INFO Waiting for ProgPoW turn (network is mining RandomX now)", &s);
+		assert_eq!(s.lock().unwrap().hashrate, 0.0);
+		assert!(s.lock().unwrap().waiting);
+		parse_gpu_line("[CUCKOO] INFO Mining: Cuck(at)oo at 12.50 gps (graphs per second)", &s);
+		assert_eq!(s.lock().unwrap().hashrate, 12.5);
+		parse_gpu_line("[CUCKOO] INFO Waiting for Cuckoo turn (network is mining ProgPow now; Cuckoo gets ~4% of blocks)", &s);
+		assert_eq!(s.lock().unwrap().hashrate, 0.0);
 	}
 }
