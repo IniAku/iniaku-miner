@@ -8,7 +8,7 @@
 #     devices=0,1                GPUs: 0,1,2 or 0-3 or all (default: all GPUs HiveOS detected)
 #     cpu-fallback=host:port cpu-fallback-user=<wallet> [cpu-fallback-algo=rx/0] [cpu-fallback-pass=x]
 #     gpu-fallback=host:port gpu-fallback-user=<wallet> [gpu-fallback-algo=kawpow] [gpu-fallback-pass=x]
-#       pools used between the Epic RandomX / ProgPoW turns (2% fee on that time only)
+#       pools used between the Epic RandomX / ProgPoW turns (1% fee on that time only)
 #     fallback-tls=0             no TLS to the fallback pools (default TLS on)
 #     lan=192.168.1.139          the pool node is in your own LAN (router without NAT loopback):
 #                                the region's hostname is pointed at that IP in /etc/hosts.

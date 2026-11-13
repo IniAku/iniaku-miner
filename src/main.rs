@@ -964,7 +964,7 @@ fn main() {
 			args.extend(extra);
 			engines.push(Engine::new("GPU2", gpu2_dir, cpu_dir.join(format!("xmrig{}", EXE)), args));
 		}
-		log(&format!("GPU2: {} on {} between ProgPoW turns (2% fee on that time)",
+		log(&format!("GPU2: {} on {} between ProgPoW turns (1% fee on that time)",
 			fb.get("algo").and_then(Value::as_str).unwrap_or("kawpow"), fb["url"].as_str().unwrap_or("?")));
 	}
 

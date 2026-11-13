@@ -6,7 +6,7 @@ Mines RandomX on the CPU and ProgPoW on the GPU at the same time, from one confi
   gpu/  epic-miner iniaku (ProgPoW, OpenCL/CUDA)   worker <worker>-gpu
 Both show up as separate workers of your wallet on https://epic.iniaku.my.id and are paid
 from the RandomX and the ProgPoW blocks of the pool. Pool fee as on the website; no extra fee
-on epic.iniaku.my.id (2% only on time spent on fallback pools).
+on epic.iniaku.my.id (1% only on time spent on fallback pools).
 
 Quick start
 -----------
@@ -48,8 +48,8 @@ Fallback pools and fee
 Epic takes turns per block: RandomX, ProgPoW, RandomX, ProgPoW, ... and Cuckoo every 25th.
 Without fallback pools the GPU waits outside the ProgPoW turn and the CPU keeps mining
 RandomX. With fallback pools both switch to them outside their turn and come back the moment
-the turn starts. Time on epic.iniaku.my.id: 0% fee. Time on fallback pools: 2% fee (1 minute
-after 49 minutes, same algorithm, never during an Epic turn).
+the turn starts. Time on epic.iniaku.my.id: 0% fee. Time on fallback pools: 1% fee (1 minute
+after 99 minutes, same algorithm, never during an Epic turn).
 The GPU keeps both DAGs in memory (ProgPoW ~2.2 GB + KawPow ~3-5 GB): use 8 GB+ GPUs for a
 KawPow fallback.
 

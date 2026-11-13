@@ -130,7 +130,7 @@ Add `fallback` to the `cpu` section:
 ## Fee
 
 - Time on epic.iniaku.my.id: **0% dev fee**. The pool fee is listed on the website.
-- Time on fallback pools: **2%** (1 minute after 49 minutes, same algorithm, never during an Epic turn).
+- Time on fallback pools: **1%** (1 minute after 99 minutes, same algorithm, never during an Epic turn).
 - Without fallback pools there is no dev fee at all.
 
 ## HiveOS
