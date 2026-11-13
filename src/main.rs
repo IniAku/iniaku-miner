@@ -782,6 +782,11 @@ fn usage() -> ! {
 }
 
 fn main() {
+	// CUDA numbers GPUs fastest-first by default; PCI bus order matches OpenCL, nvidia-smi and the
+	// "devices" numbers (xmrig-cuda and quantus-iniaku inherit it).
+	if std::env::var_os("CUDA_DEVICE_ORDER").is_none() {
+		std::env::set_var("CUDA_DEVICE_ORDER", "PCI_BUS_ID");
+	}
 	let base = std::env::current_exe()
 		.ok()
 		.and_then(|p| p.parent().map(Path::to_path_buf))
@@ -925,7 +930,6 @@ fn main() {
 				"-o".to_string(), url,
 				"-u".to_string(), fb["user"].as_str().unwrap_or("").to_string(),
 				"-p".to_string(), fb.get("pass").and_then(Value::as_str).unwrap_or("x").to_string(),
-				format!("--gpu-devices={}", config.gpu.devices.len().max(1)),
 				format!("--api-port={}", GPU2_API_PORT),
 				format!("--api-token={}", token),
 				"--paused".to_string(),
@@ -937,6 +941,18 @@ fn main() {
 			};
 			if cuda {
 				args.push("--cuda-gpu".to_string());
+			}
+			// Same GPUs as Epic: the numbers in "devices" on epic-miner's OpenCL platform (CUDA in PCI
+			// bus order, see CUDA_DEVICE_ORDER in main). "all" = every GPU. Before 1.0.13 only a GPU
+			// COUNT was passed, so Quantus took the first card(s) and only one GPU with "all".
+			if !config.gpu.devices.is_empty() {
+				let ids = config.gpu.devices.iter().map(|d| d.to_string()).collect::<Vec<_>>().join(",");
+				args.push(format!("--gpu-ids={}", ids));
+				let platform = platform_env(&config.gpu.opencl_platform)
+					.or_else(|| detect_gpus(&config.gpu.opencl_platform).ok().map(|(_, label)| label));
+				if let Some(p) = platform {
+					args.push(format!("--opencl-platform={}", p));
+				}
 			}
 			engines.push(Engine::new("GPU2", gpu2_dir, gpu_dir.join(format!("quantus-iniaku{}", EXE)), args));
 		} else {
