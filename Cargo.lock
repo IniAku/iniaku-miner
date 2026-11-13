@@ -32,7 +32,7 @@ dependencies = [
 
 [[package]]
 name = "iniaku-miner"
-version = "1.0.12"
+version = "1.0.13"
 dependencies = [
  "ctrlc",
  "libloading",
